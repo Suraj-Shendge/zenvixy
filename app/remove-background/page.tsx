@@ -1,16 +1,37 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
-import { Upload, Download, Loader2, ArrowLeft, CheckCircle } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Upload, Download, ArrowLeft, Loader2, AlertCircle, CheckCircle, X } from "lucide-react";
+import Link from "next/link";
 
 export default function RemoveBackground() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string>("");
   const [resultUrl, setResultUrl] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string>("");
+  const [progress, setProgress] = useState<number>(0);
+  const [modelLoaded, setModelLoaded] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const removeFnRef = useRef<any>(null);
+
+  // Load imgly library from CDN
+  useEffect(() => {
+    const loadLibrary = async () => {
+      if (typeof window !== "undefined" && !(window as any).removeBackground) {
+        const script = document.createElement("script");
+        script.src = "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/index.umd.min.js";
+        script.async = true;
+        script.onload = () => setModelLoaded(true);
+        script.onerror = () => setError("Failed to load AI model");
+        document.head.appendChild(script);
+      } else {
+        setModelLoaded(true);
+      }
+    };
+    loadLibrary();
+  }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -18,7 +39,6 @@ export default function RemoveBackground() {
     setFile(f);
     setResultUrl("");
     setError("");
-    setProgress(0);
     setPreview(URL.createObjectURL(f));
   };
 
@@ -29,7 +49,6 @@ export default function RemoveBackground() {
       setFile(f);
       setResultUrl("");
       setError("");
-      setProgress(0);
       setPreview(URL.createObjectURL(f));
     }
   }, []);
@@ -41,11 +60,14 @@ export default function RemoveBackground() {
     setProgress(0);
 
     try {
-      const removeBackground = await import("@imgly/background-removal").then(m => m.default);
-      
-      const blob = await removeBackground(file, {
-        progress: (key, current, total) => {
-          if (key === "compute:inference") {
+      const removeBackground = (window as any).removeBackground;
+      if (!removeBackground) {
+        throw new Error("AI model not loaded. Please refresh and try again.");
+      }
+
+      const result = await removeBackground(file, {
+        progress: (key: string, current: number, total: number) => {
+          if (total > 0) {
             setProgress(Math.round((current / total) * 100));
           }
         },
@@ -55,13 +77,19 @@ export default function RemoveBackground() {
         },
       });
 
-      const url = URL.createObjectURL(blob);
-      setResultUrl(url);
-      setIsProcessing(false);
-      setProgress(100);
-    } catch (err) {
-      console.error("Background removal failed:", err);
-      setError("Failed to remove background. Please try a different image.");
+      // Convert blob to data URL
+      const reader = new FileReader();
+      reader.onload = () => {
+        setResultUrl(reader.result as string);
+        setIsProcessing(false);
+        setProgress(100);
+      };
+      reader.onerror = () => {
+        throw new Error("Failed to process result");
+      };
+      reader.readAsDataURL(result);
+    } catch (err: any) {
+      setError(err.message || "Failed to remove background");
       setIsProcessing(false);
     }
   };
@@ -70,147 +98,148 @@ export default function RemoveBackground() {
     if (!resultUrl) return;
     const a = document.createElement("a");
     a.href = resultUrl;
-    a.download = file?.name.replace(/\.[^.]+$/, "_nobg.png") || "removed_background.png";
+    a.download = file?.name.replace(/\.[^.]+$/, "_no_bg.png") || "result.png";
     a.click();
   };
 
+  const reset = () => {
+    setFile(null);
+    setPreview("");
+    setResultUrl("");
+    setError("");
+    setProgress(0);
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-2xl mx-auto px-6 py-8">
-        <button
-          onClick={() => window.history.back()}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </button>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white">
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
+          <Link href="/" className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </Link>
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Remove Background</h1>
+            <p className="text-sm text-gray-500">AI-powered • 100% Private</p>
+          </div>
+        </div>
+      </header>
 
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Remove Background</h1>
-        <p className="text-gray-500 mb-8">AI-powered background removal for images</p>
-
-        {!file ? (
-          <label
-            onDrop={handleDrop}
-            onDragOver={(e) => e.preventDefault()}
-            className="block border-2 border-dashed border-gray-300 rounded-2xl p-12 text-center cursor-pointer hover:border-purple-500 hover:bg-purple-50/50 transition-all bg-white"
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-purple-100 flex items-center justify-center">
-              <Upload className="w-8 h-8 text-purple-600" />
-            </div>
-            <p className="font-semibold text-gray-900 text-lg mb-2">Drop your image here</p>
-            <p className="text-sm text-gray-500 mb-4">or click to browse</p>
-            <p className="text-xs text-gray-400">Supports JPG, PNG • Best results with clear subject</p>
-          </label>
-        ) : (
+      <main className="max-w-2xl mx-auto px-6 py-12">
+        {!resultUrl ? (
           <div className="space-y-6">
-            {/* Image Preview */}
-            <div className="bg-white rounded-2xl p-4">
-              <div className="relative rounded-xl overflow-hidden bg-checkerboard flex items-center justify-center min-h-64">
-                <img
-                  src={preview}
-                  alt="Preview"
-                  className="max-w-full max-h-80 object-contain"
-                />
-              </div>
-              <p className="text-sm text-gray-500 mt-3 text-center">
-                {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
-              </p>
+            <div
+              onDrop={handleDrop}
+              onDragOver={(e) => e.preventDefault()}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-all ${
+                preview
+                  ? "border-green-400 bg-green-50 hover:bg-green-100"
+                  : "border-gray-300 hover:border-gray-400 hover:bg-gray-50"
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              {preview ? (
+                <div className="space-y-4">
+                  <img src={preview} alt="Preview" className="max-h-64 mx-auto rounded-xl" />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); reset(); }}
+                    className="text-sm text-red-600 hover:text-red-700 font-medium"
+                  >
+                    Remove image
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <Upload className="w-8 h-8 text-gray-400" />
+                  </div>
+                  <p className="text-gray-600 font-medium mb-1">Drop your image here</p>
+                  <p className="text-sm text-gray-400">or click to browse</p>
+                  <p className="text-xs text-gray-400 mt-2">Supports JPG, PNG, WebP</p>
+                </>
+              )}
             </div>
 
-            {/* Error */}
-            {error && (
-              <div className="bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm">
-                {error}
-              </div>
-            )}
-
-            {/* Progress */}
-            {isProcessing && (
-              <div className="bg-white rounded-2xl p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
-                  <span className="font-medium text-gray-900">Removing background...</span>
-                </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-purple-600 transition-all duration-300"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-                <p className="text-sm text-gray-500 mt-2">{progress}% complete</p>
-              </div>
-            )}
-
-            {/* Remove Button */}
-            {!resultUrl && !isProcessing && (
+            {file && (
               <button
                 onClick={removeBackground}
-                className="w-full py-4 bg-purple-600 text-white rounded-2xl font-semibold hover:bg-purple-700 transition-colors"
+                disabled={isProcessing || !modelLoaded}
+                className="w-full py-4 bg-gray-900 text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Remove Background
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Removing background... {progress}%
+                  </>
+                ) : !modelLoaded ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Loading AI Model...
+                  </>
+                ) : (
+                  "Remove Background"
+                )}
               </button>
             )}
 
-            {/* Result */}
-            {resultUrl && (
-              <div className="bg-white rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-4">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                  <span className="font-medium text-gray-900">Background Removed!</span>
-                </div>
-                <div className="relative rounded-xl overflow-hidden bg-checkerboard flex items-center justify-center min-h-64 mb-4">
-                  <img
-                    src={resultUrl}
-                    alt="Result"
-                    className="max-w-full max-h-80 object-contain"
-                  />
-                </div>
-                <button
-                  onClick={downloadResult}
-                  className="w-full py-4 bg-green-600 text-white rounded-2xl font-semibold hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-                >
-                  <Download className="w-5 h-5" />
-                  Download PNG
-                </button>
+            {isProcessing && (
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                />
               </div>
             )}
 
-            {/* Reset */}
-            <button
-              onClick={() => {
-                setFile(null);
-                setPreview("");
-                setResultUrl("");
-                setError("");
-                setProgress(0);
-              }}
-              className="w-full py-3 text-gray-500 hover:text-gray-700 text-sm"
-            >
-              Process Another Image
-            </button>
+            {error && (
+              <div className="flex items-center gap-2 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                <p className="text-sm">{error}</p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+              <CheckCircle className="w-4 h-4 text-green-500" />
+              <span>100% Private • Files never leave your device</span>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="bg-gray-100 rounded-2xl p-4 relative">
+              <img src={resultUrl} alt="Result" className="max-h-[500px] mx-auto rounded-xl" />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={downloadResult}
+                className="flex-1 py-4 bg-gray-900 text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-gray-800"
+              >
+                <Download className="w-5 h-5" />
+                Download PNG
+              </button>
+              <button
+                onClick={reset}
+                className="px-6 py-4 border border-gray-300 rounded-xl font-medium hover:bg-gray-50"
+              >
+                New Image
+              </button>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+              <CheckCircle className="w-4 h-4 text-green-500" />
+              <span>No watermarks • High quality output</span>
+            </div>
           </div>
         )}
-      </div>
+      </main>
 
-      <style jsx>{`
-        .bg-checkerboard {
-          background-image:
-            linear-gradient(45deg, #e5e5e5 25%, transparent 25%),
-            linear-gradient(-45deg, #e5e5e5 25%, transparent 25%),
-            linear-gradient(45deg, transparent 75%, #e5e5e5 75%),
-            linear-gradient(-45deg, transparent 75%, #e5e5e5 75%);
-          background-size: 20px 20px;
-          background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
-          background-color: #fafafa;
-        }
-      `}</style>
+      <canvas ref={canvasRef} className="hidden" />
     </div>
   );
 }
