@@ -1,31 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Note: For Vercel serverless, we use browser-based image compression
-// This API can handle advanced compression scenarios
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const file = formData.get("file") as File;
+    const file = formData.get("image") as File;
     const quality = parseInt(formData.get("quality") as string) || 80;
-    
+
     if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+      return NextResponse.json({ error: "No image provided" }, { status: 400 });
     }
 
-    // Read file as base64
     const arrayBuffer = await file.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString("base64");
-    const mimeType = file.type;
+    const uint8Array = new Uint8Array(arrayBuffer);
 
-    return NextResponse.json({
-      success: true,
-      originalSize: file.size,
+    // For compression, we return the base64 directly
+    // Client will handle the compression
+    const base64 = Buffer.from(uint8Array).toString("base64");
+
+    return NextResponse.json({ 
+      original: base64,
       quality,
-      // Return data URI for browser-side compression
-      dataUri: `data:${mimeType};base64,${base64}`,
+      message: "Use client-side compression for best results"
     });
   } catch (error) {
-    console.error("Image compress error:", error);
+    console.error("Error processing image:", error);
     return NextResponse.json({ error: "Failed to process image" }, { status: 500 });
   }
 }

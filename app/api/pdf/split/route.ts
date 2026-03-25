@@ -1,55 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PDFDocument } from "pdf-lib";
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File;
-    const ranges = formData.get("ranges") as string; // JSON: [[0,2],[3,5]]
-    
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    const rangesParam = formData.get("ranges") as string;
+
+    if (!file || !rangesParam) {
+      return NextResponse.json({ error: "File and ranges required" }, { status: 400 });
     }
 
+    const ranges = JSON.parse(rangesParam) as { from: number; to: number }[];
+    const { PDFDocument } = await import("pdf-lib");
     const arrayBuffer = await file.arrayBuffer();
     const pdfDoc = await PDFDocument.load(arrayBuffer);
-    const totalPages = pdfDoc.getPageCount();
-    
-    let pageRanges: number[][];
-    try {
-      pageRanges = JSON.parse(ranges || "[[0," + (totalPages - 1) + "]]");
-    } catch {
-      pageRanges = [[0, totalPages - 1]];
-    }
+    const results: { name: string; pdf: string }[] = [];
 
-    const pdfs: Uint8Array[] = [];
-    
-    for (const [start, end] of pageRanges) {
-      const splitPdf = await PDFDocument.create();
-      const pages = await splitPdf.copyPages(pdfDoc, pdfDoc.getPageIndices().filter((_, i) => i >= start && i <= end));
-      pages.forEach(page => splitPdf.addPage(page));
-      pdfs.push(await splitPdf.save());
-    }
-
-    // If single PDF, return directly
-    if (pdfs.length === 1) {
-      return new NextResponse(pdfs[0], {
-        headers: {
-          "Content-Type": "application/pdf",
-          "Content-Disposition": "attachment; filename=split.pdf",
-        },
+    for (const range of ranges) {
+      const subDoc = await PDFDocument.create();
+      const indices: number[] = [];
+      for (let i = range.from - 1; i < range.to; i++) {
+        indices.push(i);
+      }
+      const copiedPages = await subDoc.copyPages(pdfDoc, indices);
+      copiedPages.forEach(page => subDoc.addPage(page));
+      const pdfBytes = await subDoc.save();
+      results.push({
+        name: `pages_${range.from}-${range.to}.pdf`,
+        pdf: Buffer.from(pdfBytes).toString("base64")
       });
     }
 
-    // If multiple PDFs, return as base64 array
-    return NextResponse.json({
-      files: pdfs.map((pdf, i) => ({
-        name: `split_${start}_${end}.pdf`,
-        data: Buffer.from(pdf).toString("base64"),
-      })),
-    });
+    return NextResponse.json({ files: results });
   } catch (error) {
-    console.error("PDF split error:", error);
+    console.error("Error splitting PDF:", error);
     return NextResponse.json({ error: "Failed to split PDF" }, { status: 500 });
   }
 }

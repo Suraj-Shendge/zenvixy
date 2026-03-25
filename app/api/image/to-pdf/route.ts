@@ -1,29 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PDFDocument } from "pdf-lib";
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const files = formData.getAll("files") as File[];
-    
+    const files = formData.getAll("images") as File[];
+
     if (!files || files.length === 0) {
-      return NextResponse.json({ error: "No files provided" }, { status: 400 });
+      return NextResponse.json({ error: "No images provided" }, { status: 400 });
     }
 
+    const { PDFDocument } = await import("pdf-lib");
     const pdfDoc = await PDFDocument.create();
-    
-    for (const file of files) {
-      const arrayBuffer = await file.arrayBuffer();
-      let image;
-      
-      if (file.type === "image/png") {
-        image = await pdfDoc.embedPng(arrayBuffer);
-      } else if (file.type === "image/jpeg" || file.type === "image/jpg") {
-        image = await pdfDoc.embedJpg(arrayBuffer);
-      } else {
-        continue; // Skip unsupported formats
-      }
 
+    for (const file of files) {
+      const imageBytes = await file.arrayBuffer();
+      const image = await pdfDoc.embedJpg(imageBytes);
       const page = pdfDoc.addPage([image.width, image.height]);
       page.drawImage(image, {
         x: 0,
@@ -34,15 +25,11 @@ export async function POST(request: NextRequest) {
     }
 
     const pdfBytes = await pdfDoc.save();
-    
-    return new NextResponse(pdfBytes, {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": "attachment; filename=images.pdf",
-      },
-    });
+    const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
+
+    return NextResponse.json({ pdf: pdfBase64 });
   } catch (error) {
-    console.error("Image to PDF error:", error);
+    console.error("Error converting images to PDF:", error);
     return NextResponse.json({ error: "Failed to convert images to PDF" }, { status: 500 });
   }
 }
