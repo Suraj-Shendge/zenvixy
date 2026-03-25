@@ -1,119 +1,88 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { FileArchive, Download, CheckCircle2, X, Plus } from "lucide-react";
-import Link from "next/link";
+import { Upload, Download, Loader2, X, FileText } from "lucide-react";
 
-export default function MergePDF() {
+export default function MergePdf() {
   const [files, setFiles] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isComplete, setIsComplete] = useState(false);
-  const [resultUrl, setResultUrl] = useState<string>("");
+  const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(e.target.files || []);
-    const pdfFiles = selectedFiles.filter(f => f.type === "application/pdf");
-    setFiles(prev => [...prev, ...pdfFiles]);
+  const handleFiles = (newFiles: FileList | null) => {
+    if (!newFiles) return;
+    const pdfs = Array.from(newFiles).filter((f) => f.type === "application/pdf");
+    setFiles((prev) => [...prev, ...pdfs]);
   };
 
   const removeFile = (index: number) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
+    setFiles(files.filter((_, i) => i !== index));
   };
 
-  const moveFile = (index: number, direction: "up" | "down") => {
-    if (
-      (direction === "up" && index === 0) ||
-      (direction === "down" && index === files.length - 1)
-    ) return;
-    
-    const newFiles = [...files];
-    const swapIndex = direction === "up" ? index - 1 : index + 1;
-    [newFiles[index], newFiles[swapIndex]] = [newFiles[swapIndex], newFiles[index]];
-    setFiles(newFiles);
-  };
-
-  const mergePDFs = async () => {
+  const mergePdfs = async () => {
     if (files.length < 2) return;
-    
     setIsProcessing(true);
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const { PDFDocument } = await import("pdf-lib");
+      const mergedPdf = await PDFDocument.create();
       
-      // Simple merge simulation - in production use pdf-lib
-      const mergedBlob = new Blob([await files[0].arrayBuffer()], { type: "application/pdf" });
-      const url = URL.createObjectURL(mergedBlob);
-      setResultUrl(url);
-      setIsComplete(true);
-    } catch (error) {
-      console.error("Merge failed:", error);
+      for (const file of files) {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await PDFDocument.load(arrayBuffer);
+        const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+        pages.forEach((page) => mergedPdf.addPage(page));
+      }
+      
+      const pdfBytes = await mergedPdf.save();
+      const blob = new Blob([new Uint8Array(pdfBytes)], { type: "application/pdf" });
+      setResultUrl(URL.createObjectURL(blob));
+    } catch (err) {
+      console.error(err);
     }
-    
     setIsProcessing(false);
   };
 
-  const downloadResult = () => {
+  const download = () => {
     if (!resultUrl) return;
-    const link = document.createElement("a");
-    link.href = resultUrl;
-    link.download = `merged_${Date.now()}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const resetTool = () => {
-    setFiles([]);
-    setIsComplete(false);
-    setResultUrl("");
+    const a = document.createElement("a");
+    a.href = resultUrl;
+    a.download = "merged.pdf";
+    a.click();
   };
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
-      <div className="border-b border-gray-100">
-        <div className="max-w-xl mx-auto px-6 py-5">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
-              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
-              <FileArchive className="w-5 h-5 text-gray-700" />
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold text-black">Merge PDF</h1>
-              <p className="text-sm text-gray-400">Combine multiple PDFs</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <div className="max-w-xl mx-auto px-6 py-12">
+        <h1 className="text-2xl font-semibold text-gray-900 mb-2">Merge PDF</h1>
+        <p className="text-gray-500 mb-8">Combine multiple PDFs into one</p>
 
-      {/* Content */}
-      <div className="max-w-xl mx-auto px-6 py-10">
-        {!isComplete ? (
-          <div className="space-y-5">
-            {/* File List */}
+        {!resultUrl ? (
+          <div className="space-y-6">
+            <div
+              onDrop={(e) => { e.preventDefault(); setIsDragging(false); handleFiles(e.dataTransfer.files); }}
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-colors ${isDragging ? "border-gray-400 bg-gray-50" : "border-gray-200 hover:border-gray-300"}`}
+            >
+              <input ref={fileInputRef} type="file" accept=".pdf" multiple onChange={(e) => handleFiles(e.target.files)} className="hidden" />
+              <Upload className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p className="font-medium text-gray-900">Drop PDF files here</p>
+              <p className="text-sm text-gray-500 mt-1">or click to browse</p>
+            </div>
+
             {files.length > 0 && (
               <div className="space-y-2">
-                {files.map((file, index) => (
-                  <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                    <span className="w-6 h-6 bg-gray-200 rounded text-xs font-medium text-gray-600 flex items-center justify-center">
-                      {index + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-black truncate">{file.name}</p>
-                      <p className="text-xs text-gray-400">{(file.size / 1024).toFixed(1)} KB</p>
+                <p className="text-sm font-medium text-gray-700">{files.length} files selected</p>
+                {files.map((f, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <FileText className="w-5 h-5 text-gray-400" />
+                      <span className="text-sm font-medium text-gray-700">{f.name}</span>
                     </div>
-                    <button onClick={() => moveFile(index, "up")} className="p-1 hover:bg-gray-200 rounded">
-                      <span className="text-gray-400">↑</span>
-                    </button>
-                    <button onClick={() => moveFile(index, "down")} className="p-1 hover:bg-gray-200 rounded">
-                      <span className="text-gray-400">↓</span>
-                    </button>
-                    <button onClick={() => removeFile(index)} className="p-1 hover:bg-gray-200 rounded">
+                    <button onClick={() => removeFile(i)} className="p-1 hover:bg-gray-200 rounded">
                       <X className="w-4 h-4 text-gray-400" />
                     </button>
                   </div>
@@ -121,55 +90,18 @@ export default function MergePDF() {
               </div>
             )}
 
-            {/* Add More */}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full p-6 border-2 border-dashed border-gray-200 rounded-2xl text-center hover:border-gray-300 transition-colors"
-            >
-              <Plus className="w-6 h-6 text-gray-400 mx-auto mb-2" />
-              <p className="text-sm font-medium text-black">Add more PDFs</p>
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf"
-              multiple
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-
-            {/* Merge Button */}
-            <button
-              onClick={mergePDFs}
-              disabled={files.length < 2 || isProcessing}
-              className="w-full py-4 bg-black text-white rounded-xl font-medium disabled:opacity-40 flex items-center justify-center gap-2"
-            >
-              {isProcessing ? "Merging..." : `Merge ${files.length} PDFs`}
+            <button onClick={mergePdfs} disabled={files.length < 2 || isProcessing} className="w-full py-4 bg-black text-white rounded-xl font-medium flex items-center justify-center gap-2 disabled:opacity-50">
+              {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+              {isProcessing ? "Merging..." : "Merge PDFs"}
             </button>
           </div>
         ) : (
-          <div className="space-y-5">
-            <div className="bg-gray-50 rounded-2xl p-8 text-center">
-              <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
-                <CheckCircle2 className="w-7 h-7 text-green-600" />
-              </div>
-              <h2 className="text-lg font-semibold text-black mb-1">PDFs Merged!</h2>
-              <p className="text-sm text-gray-500 mb-5">{files.length} files combined</p>
-
-              <button
-                onClick={downloadResult}
-                className="w-full py-3.5 bg-black text-white rounded-xl font-medium flex items-center justify-center gap-2"
-              >
-                <Download className="w-4 h-4" />
-                Download PDF
-              </button>
-              <button
-                onClick={resetTool}
-                className="w-full py-3.5 border border-gray-200 text-black rounded-xl font-medium mt-2"
-              >
-                Merge More
-              </button>
-            </div>
+          <div className="bg-gray-50 rounded-2xl p-8 text-center">
+            <p className="text-lg font-medium text-gray-900 mb-6">PDFs merged!</p>
+            <button onClick={download} className="w-full py-4 bg-black text-white rounded-xl font-medium flex items-center justify-center gap-2">
+              <Download className="w-5 h-5" /> Download Merged PDF
+            </button>
+            <button onClick={() => { setResultUrl(null); setFiles([]); }} className="w-full py-3 mt-3 text-gray-500 hover:text-gray-700">Merge another</button>
           </div>
         )}
       </div>

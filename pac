@@ -1,0 +1,32 @@
+{
+  "name": "zenvixy",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "lucide-react": "^0.400.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.0.379",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.2",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.4.5",
+    "tailwindcss": "^3.4.4",
+    "postcss": "^8.4.38",
+    "autoprefixer": "^10.4.19",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "14.2.5"
+  }
+}
