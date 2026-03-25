@@ -1,118 +1,208 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
-import { Upload, Download, Loader2 } from "lucide-react";
-
-const presets = [
-  { label: "HD", width: 1920, height: 1080 },
-  { label: "Square", width: 1080, height: 1080 },
-  { label: "4K", width: 3840, height: 2160 },
-  { label: "Mobile", width: 750, height: 1334 },
-  { label: "Custom", width: 0, height: 0 },
-];
+import { useState, useRef } from "react";
 
 export default function ResizeImage() {
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [width, setWidth] = useState(1920);
-  const [height, setHeight] = useState(1080);
+  const [preview, setPreview] = useState<string>("");
+  const [originalSize, setOriginalSize] = useState({ width: 0, height: 0 });
+  const [newWidth, setNewWidth] = useState(1920);
+  const [newHeight, setNewHeight] = useState(1080);
+  const [maintainAspect, setMaintainAspect] = useState(true);
+  const [resultUrl, setResultUrl] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [resultUrl, setResultUrl] = useState<string | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const handleFile = useCallback((f: File) => {
-    if (f.type.startsWith("image/")) {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setFile(f);
+    setResultUrl("");
+    const url = URL.createObjectURL(f);
+    setPreview(url);
+    
+    const img = new window.Image();
+    img.onload = () => {
+      setOriginalSize({ width: img.width, height: img.height });
+      setNewWidth(img.width);
+      setNewHeight(img.height);
+    };
+    img.src = url;
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith("image/")) {
       setFile(f);
-      setResultUrl(null);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setPreview(e.target?.result as string);
-        const img = new window.Image();
-        img.onload = () => { setWidth(img.naturalWidth); setHeight(img.naturalHeight); };
-        img.src = e.target?.result as string;
-      };
-      reader.readAsDataURL(f);
+      setResultUrl("");
+      const url = URL.createObjectURL(f);
+      setPreview(url);
     }
-  }, []);
+  };
+
+  const handleWidthChange = (w: number) => {
+    setNewWidth(w);
+    if (maintainAspect && originalSize.height) {
+      setNewHeight(Math.round(w * (originalSize.height / originalSize.width)));
+    }
+  };
+
+  const handleHeightChange = (h: number) => {
+    setNewHeight(h);
+    if (maintainAspect && originalSize.width) {
+      setNewWidth(Math.round(h * (originalSize.width / originalSize.height)));
+    }
+  };
 
   const resizeImage = () => {
     if (!preview) return;
     setIsProcessing(true);
+    
     const img = new window.Image();
     img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d")!;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      
+      canvas.width = newWidth;
+      canvas.height = newHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      
       ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(img, 0, 0, width, height);
+      ctx.drawImage(img, 0, 0, newWidth, newHeight);
+      
       canvas.toBlob((blob) => {
-        setResultUrl(URL.createObjectURL(blob!));
+        if (blob) {
+          setResultUrl(URL.createObjectURL(blob));
+        }
         setIsProcessing(false);
-      }, "image/jpeg", 0.92);
+      }, "image/png");
     };
     img.src = preview;
   };
 
-  const download = () => {
-    if (!resultUrl || !file) return;
+  const downloadResult = () => {
+    if (!resultUrl) return;
     const a = document.createElement("a");
     a.href = resultUrl;
-    a.download = file.name.replace(/\.[^.]+$/, `_${width}x${height}.jpg`);
+    a.download = file?.name.replace(/\.[^.]+$/, `_${newWidth}x${newHeight}.png`) || "resized.png";
     a.click();
   };
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="max-w-xl mx-auto px-6 py-12">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-2">Resize Image</h1>
-        <p className="text-gray-500 mb-8">Change dimensions while maintaining quality</p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Resize Image</h1>
+        <p className="text-gray-500 mb-6">Change image dimensions while maintaining quality</p>
 
-        {!resultUrl ? (
+        {!file ? (
+          <label
+            onDrop={handleDrop}
+            onDragOver={(e) => e.preventDefault()}
+            className="block border-2 border-dashed border-gray-300 rounded-2xl p-12 text-center cursor-pointer hover:border-blue-500 transition-colors bg-white"
+          >
+            <input type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
+            <div className="text-4xl mb-4">🖼️</div>
+            <p className="font-medium text-gray-900">Drop your image here</p>
+            <p className="text-sm text-gray-500 mt-1">or click to browse</p>
+          </label>
+        ) : (
           <div className="space-y-6">
-            <div onDrop={(e) => { e.preventDefault(); setIsDragging(false); e.dataTransfer.files[0] && handleFile(e.dataTransfer.files[0]); }} onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }} onDragLeave={() => setIsDragging(false)} onClick={() => fileInputRef.current?.click()} className={`border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-colors ${isDragging ? "border-gray-400 bg-gray-50" : "border-gray-200 hover:border-gray-300"}`}>
-              <input ref={fileInputRef} type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files?.[0])} className="hidden" />
-              {preview ? <img src={preview} alt="Preview" className="max-h-48 mx-auto rounded-xl mb-4" /> : <Upload className="w-12 h-12 text-gray-300 mx-auto mb-4" />}
-              <p className="font-medium text-gray-900">{file ? file.name : "Drop image here"}</p>
+            {/* Preview */}
+            <div className="bg-white rounded-2xl p-4">
+              <div className="relative max-h-[400px] overflow-hidden rounded-xl bg-gray-100">
+                <img src={preview} alt="Preview" className="max-w-full mx-auto" />
+              </div>
+              <p className="text-sm text-gray-500 mt-2 text-center">
+                Original: {originalSize.width} × {originalSize.height}
+              </p>
             </div>
 
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Dimensions</label>
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                {presets.map((p) => (
-                  <button key={p.label} onClick={() => { setWidth(p.width); setHeight(p.height); }} className={`p-3 rounded-xl text-center transition-colors ${width === p.width && height === p.height ? "bg-black text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
-                    <p className="font-medium text-sm">{p.label}</p>
-                    {p.width > 0 && <p className="text-xs text-gray-400">{p.width}×{p.height}</p>}
+            {/* Dimensions */}
+            <div className="bg-white rounded-2xl p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={maintainAspect}
+                  onChange={(e) => setMaintainAspect(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-gray-600">Maintain aspect ratio</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Width (px)</label>
+                  <input
+                    type="number"
+                    value={newWidth}
+                    onChange={(e) => handleWidthChange(Number(e.target.value))}
+                    className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Height (px)</label>
+                  <input
+                    type="number"
+                    value={newHeight}
+                    onChange={(e) => handleHeightChange(Number(e.target.value))}
+                    className="w-full mt-1 px-4 py-2 border border-gray-200 rounded-xl"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <span className="text-sm text-gray-500">Presets:</span>
+                {[1920, 1280, 800, 640].map((w) => (
+                  <button
+                    key={w}
+                    onClick={() => handleWidthChange(w)}
+                    className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                  >
+                    {w}px
                   </button>
                 ))}
               </div>
-              <div className="flex items-center gap-4">
-                <div className="flex-1">
-                  <label className="text-xs text-gray-500 mb-1 block">Width</label>
-                  <input type="number" value={width} onChange={(e) => setWidth(parseInt(e.target.value) || 0)} className="w-full px-4 py-3 rounded-xl border border-gray-200" />
-                </div>
-                <span className="text-gray-400 mt-5">×</span>
-                <div className="flex-1">
-                  <label className="text-xs text-gray-500 mb-1 block">Height</label>
-                  <input type="number" value={height} onChange={(e) => setHeight(parseInt(e.target.value) || 0)} className="w-full px-4 py-3 rounded-xl border border-gray-200" />
-                </div>
-              </div>
+
+              <button
+                onClick={resizeImage}
+                disabled={isProcessing}
+                className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isProcessing ? "Resizing..." : "Resize Image"}
+              </button>
             </div>
 
-            <button onClick={resizeImage} disabled={!file || isProcessing} className="w-full py-4 bg-black text-white rounded-xl font-medium flex items-center justify-center gap-2 disabled:opacity-50">
-              {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-              {isProcessing ? "Resizing..." : "Resize Image"}
+            {/* Result Preview */}
+            {resultUrl && (
+              <div className="bg-white rounded-2xl p-6">
+                <h3 className="font-medium text-gray-900 mb-4">Result Preview</h3>
+                <div className="relative max-h-[400px] overflow-hidden rounded-xl bg-gray-100 mb-4">
+                  <img src={resultUrl} alt="Result" className="max-w-full mx-auto" />
+                </div>
+                <p className="text-sm text-gray-500 mb-4 text-center">
+                  New size: {newWidth} × {newHeight}
+                </p>
+                <button
+                  onClick={downloadResult}
+                  className="w-full py-3 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700"
+                >
+                  Download Resized Image
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={() => { setFile(null); setPreview(""); setResultUrl(""); }}
+              className="w-full py-2 text-gray-500 hover:text-gray-700 text-sm"
+            >
+              Choose Different Image
             </button>
           </div>
-        ) : (
-          <div className="bg-gray-50 rounded-2xl p-8 text-center">
-            <p className="text-lg font-medium text-gray-900 mb-2">{width} × {height}</p>
-            <p className="text-gray-500 mb-6">New dimensions</p>
-            <button onClick={download} className="w-full py-4 bg-black text-white rounded-xl font-medium flex items-center justify-center gap-2"><Download className="w-5 h-5" /> Download</button>
-            <button onClick={() => { setResultUrl(null); setFile(null); setPreview(null); }} className="w-full py-3 mt-3 text-gray-500 hover:text-gray-700">Resize another</button>
-          </div>
         )}
+        
+        <canvas ref={canvasRef} className="hidden" />
       </div>
     </div>
   );
