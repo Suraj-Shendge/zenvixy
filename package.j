@@ -4,13 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "NEXT_TELEMETRY_DISABLED=1 next build",
+    "build": "next build",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
     "@stripe/stripe-js": "^4.10.0",
-    "@supabase/supabase-js": "^2.45.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.436.0",
     "next": "14.2.5",
