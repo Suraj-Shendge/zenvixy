@@ -1,12 +1,5 @@
 {
   "framework": "nextjs",
-  "buildCommand": "npm run build",
-  "outputDirectory": ".next",
-  "installCommand": "npm install",
-  "regions": ["iad1"],
-  "functions": {
-    "app/api/**/*.ts": {
-      "runtime": "nodejs18.x"
-    }
-  }
+  "buildCommand": "NEXT_TELEMETRY_DISABLED=1 npm run build",
+  "installCommand": "NEXT_TELEMETRY_DISABLED=1 npm install"
 }
