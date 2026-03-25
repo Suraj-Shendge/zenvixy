@@ -182,4 +182,3 @@ Set up a cron job to send subscription renewal reminders:
 MIT License - feel free to use for personal or commercial projects.
 # test
 test change Wed Mar 25 11:59:23 UTC 2026
-# test
