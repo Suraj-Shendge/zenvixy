@@ -1,0 +1,147 @@
+"use client";
+
+import { useState } from "react";
+import { PDFDocument } from "pdf-lib";
+import { FileArchive, Download, Upload, Trash2, Loader2, Minimize2 } from "lucide-react";
+
+export default function CompressPDF() {
+  const [file, setFile] = useState<File | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [resultUrl, setResultUrl] = useState<string>("");
+  const [originalSize, setOriginalSize] = useState(0);
+  const [compressedSize, setCompressedSize] = useState(0);
+  const [dragActive, setDragActive] = useState(false);
+
+  const handleFile = (selectedFile: File | null) => {
+    if (selectedFile && selectedFile.type === "application/pdf") {
+      setFile(selectedFile);
+      setOriginalSize(selectedFile.size);
+      setResultUrl("");
+    }
+  };
+
+  const processCompress = async () => {
+    if (!file) return;
+    setIsProcessing(true);
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      const compressed = await pdfDoc.save({ useObjectStreams: true });
+      
+      const blob = new Blob([compressed], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      setCompressedSize(blob.size);
+      setResultUrl(url);
+    } catch (error) {
+      console.error("Compression failed:", error);
+      alert("Failed to compress PDF. Please try again.");
+    }
+
+    setIsProcessing(false);
+  };
+
+  const download = () => {
+    if (!resultUrl) return;
+    const a = document.createElement("a");
+    a.href = resultUrl;
+    a.download = file?.name.replace(".pdf", "_compressed.pdf") || "compressed.pdf";
+    a.click();
+  };
+
+  const reset = () => {
+    if (resultUrl) URL.revokeObjectURL(resultUrl);
+    setFile(null);
+    setResultUrl("");
+    setOriginalSize(0);
+    setCompressedSize(0);
+  };
+
+  const reduction = originalSize > 0 && compressedSize > 0 
+    ? Math.round((1 - compressedSize / originalSize) * 100) 
+    : 0;
+
+  return (
+    <div className="min-h-screen bg-white">
+      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-xl border-b border-gray-100">
+        <div className="max-w-4xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <a href="/" className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-black flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-zap w-4 h-4 text-white"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"></path></svg>
+              </div>
+              <span className="text-lg font-semibold text-black">Zenvixy</span>
+            </a>
+            <a href="/pricing" className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl font-medium text-sm">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-crown w-4 h-4"><path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z"></path><path d="M5 21h14"></path></svg>
+              Go Premium
+            </a>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-2xl mx-auto px-6 py-12">
+        <div className="text-center mb-8">
+          <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
+            <Minimize2 className="w-7 h-7 text-gray-700" />
+          </div>
+          <h1 className="text-2xl font-bold text-black mb-2">Compress PDF</h1>
+          <p className="text-gray-500">Reduce PDF file size while maintaining quality</p>
+        </div>
+
+        {!file ? (
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+            onDragLeave={() => setDragActive(false)}
+            onDrop={(e) => { e.preventDefault(); setDragActive(false); handleFile(e.dataTransfer.files[0]); }}
+            onClick={() => document.getElementById("fileInput")?.click()}
+            className={`border-2 border-dashed rounded-3xl p-12 text-center cursor-pointer transition-colors ${dragActive ? "border-black bg-gray-50" : "border-gray-200 hover:border-gray-300"}`}
+          >
+            <input id="fileInput" type="file" accept=".pdf" onChange={(e) => handleFile(e.target.files?.[0])} className="hidden" />
+            <Upload className="w-10 h-10 text-gray-400 mx-auto mb-4" />
+            <p className="font-medium text-black mb-1">Drop your PDF here</p>
+            <p className="text-sm text-gray-500">or click to browse</p>
+          </div>
+        ) : resultUrl ? (
+          <div className="space-y-6">
+            <div className="bg-green-50 rounded-2xl p-6 text-center">
+              <p className="font-medium text-black mb-2">Compression complete!</p>
+              <p className="text-sm text-gray-600 mb-4">
+                Reduced by {reduction}% ({(originalSize / 1024 / 1024).toFixed(2)} MB → {(compressedSize / 1024 / 1024).toFixed(2)} MB)
+              </p>
+              <button onClick={download} className="w-full py-3 bg-black text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-gray-800">
+                <Download className="w-4 h-4" /> Download Compressed PDF
+              </button>
+            </div>
+            <button onClick={reset} className="w-full py-3 border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50">
+              Compress Another File
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="bg-gray-50 rounded-2xl p-6">
+              <div className="flex items-center gap-3">
+                <FileArchive className="w-5 h-5 text-gray-500" />
+                <div className="flex-1">
+                  <p className="font-medium text-black">{file.name}</p>
+                  <p className="text-sm text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                </div>
+                <button onClick={reset} className="p-2 hover:bg-gray-200 rounded-lg">
+                  <Trash2 className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
+            </div>
+
+            <button
+              onClick={processCompress}
+              disabled={isProcessing}
+              className="w-full py-4 bg-black text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-gray-800 disabled:opacity-50"
+            >
+              {isProcessing ? <><Loader2 className="w-5 h-5 animate-spin" /> Compressing...</> : <><Minimize2 className="w-5 h-5" /> Compress PDF</>}
+            </button>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
