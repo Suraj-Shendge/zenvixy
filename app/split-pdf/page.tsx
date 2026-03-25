@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { PDFDocument } from "pdf-lib";
-import { FileArchive, Download, Upload, Trash2, Loader2, Scissors } from "lucide-react";
+import { FileArchive, Download, Upload, Trash2, Loader2, Scissors, ArrowLeft } from "lucide-react";
+import Link from "next/link";
 
 export default function SplitPDF() {
   const [file, setFile] = useState<File | null>(null);
@@ -11,64 +12,36 @@ export default function SplitPDF() {
   const [totalPages, setTotalPages] = useState(0);
   const [splitAt, setSplitAt] = useState(1);
   const [dragActive, setDragActive] = useState(false);
+  const [pdfDoc, setPdfDoc] = useState<PDFDocument | null>(null);
 
-  const handleFile = (selectedFile: File | null) => {
+  const handleFile = async (selectedFile: File | null) => {
     if (selectedFile && selectedFile.type === "application/pdf") {
       setFile(selectedFile);
       setResultUrls([]);
+      const arrayBuffer = await selectedFile.arrayBuffer();
+      const doc = await PDFDocument.load(arrayBuffer);
+      setPdfDoc(doc);
+      setTotalPages(doc.getPageCount());
     }
   };
 
   const processSplit = async () => {
-    if (!file || splitAt < 1 || splitAt >= totalPages) return;
+    if (!file || !pdfDoc || splitAt < 1 || splitAt >= totalPages) return;
     setIsProcessing(true);
-
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
-      const pages = pdfDoc.getPageCount();
-
-      // Create first part
-      const part1 = await PDFDocument.create();
-      const part1Pages = await part1.copyPages(pdfDoc, Array.from({ length: splitAt }, (_, i) => i));
-      part1Pages.forEach(page => part1.addPage(page));
-      const part1Bytes = await part1.save();
-
-      // Create second part
-      const part2 = await PDFDocument.create();
-      const part2Pages = await part2.copyPages(pdfDoc, Array.from({ length: pages - splitAt }, (_, i) => i + splitAt));
-      part2Pages.forEach(page => part2.addPage(page));
-      const part2Bytes = await part2.save();
-
-      const urls = [
-        URL.createObjectURL(new Blob([part1Bytes], { type: "application/pdf" })),
-        URL.createObjectURL(new Blob([part2Bytes], { type: "application/pdf" }))
-      ];
-      setResultUrls(urls);
-    } catch (error) {
-      console.error("Split failed:", error);
-      alert("Failed to split PDF. Please try again.");
-    }
-
-    setIsProcessing(false);
-  };
-
-  const getPageCount = async (f: File) => {
-    try {
-      const arrayBuffer = await f.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
-      setTotalPages(pdfDoc.getPageCount());
+      const newDoc1 = await PDFDocument.create();
+      const newDoc2 = await PDFDocument.create();
+      const pages1 = await newDoc1.copyPages(pdfDoc, Array.from({ length: splitAt }, (_, i) => i));
+      const pages2 = await newDoc2.copyPages(pdfDoc, Array.from({ length: totalPages - splitAt }, (_, i) => i + splitAt));
+      pages1.forEach(page => newDoc1.addPage(page));
+      pages2.forEach(page => newDoc2.addPage(page));
+      const url1 = URL.createObjectURL(new Blob([new Uint8Array(await newDoc1.save())], { type: "application/pdf" }));
+      const url2 = URL.createObjectURL(new Blob([new Uint8Array(await newDoc2.save())], { type: "application/pdf" }));
+      setResultUrls([url1, url2]);
     } catch (e) {
-      console.error("Could not read PDF:", e);
+      console.error(e);
     }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      handleFile(selectedFile);
-      getPageCount(selectedFile);
-    }
+    setIsProcessing(false);
   };
 
   const download = (url: string, index: number) => {
@@ -84,6 +57,7 @@ export default function SplitPDF() {
     setResultUrls([]);
     setTotalPages(0);
     setSplitAt(1);
+    setPdfDoc(null);
   };
 
   return (
@@ -91,53 +65,51 @@ export default function SplitPDF() {
       <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-xl border-b border-gray-100">
         <div className="max-w-4xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <a href="/" className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-xl bg-black flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-zap w-4 h-4 text-white"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"></path></svg>
-              </div>
-              <span className="text-lg font-semibold text-black">Zenvixy</span>
-            </a>
-            <a href="/pricing" className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl font-medium text-sm">
+            <Link href="/" className="flex items-center gap-2 text-gray-600 hover:text-gray-900">
+              <ArrowLeft className="w-5 h-5" />
+              <span className="font-medium">Back to Tools</span>
+            </Link>
+            <Link href="/pricing" className="px-4 py-2 bg-amber-500 text-white rounded-lg font-medium text-sm">
               Go Premium
-            </a>
+            </Link>
           </div>
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-6 py-12">
+      <main className="max-w-xl mx-auto px-6 py-12">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
-            <Scissors className="w-7 h-7 text-gray-700" />
+          <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Scissors className="w-8 h-8 text-red-600" />
           </div>
-          <h1 className="text-2xl font-bold text-black mb-2">Split PDF</h1>
-          <p className="text-gray-500">Split a PDF into two separate files</p>
+          <h1 className="text-3xl font-bold text-black mb-2">Split PDF</h1>
+          <p className="text-gray-500">Divide a PDF into two separate files</p>
         </div>
 
         {!file ? (
           <div
             onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
             onDragLeave={() => setDragActive(false)}
-            onDrop={(e) => { e.preventDefault(); setDragActive(false); const f = e.dataTransfer.files[0]; handleFile(f); getPageCount(f); }}
+            onDrop={(e) => { e.preventDefault(); setDragActive(false); handleFile(e.dataTransfer.files[0] || null); }}
             onClick={() => document.getElementById("fileInput")?.click()}
-            className={\`border-2 border-dashed rounded-3xl p-12 text-center cursor-pointer transition-colors \${dragActive ? "border-black bg-gray-50" : "border-gray-200 hover:border-gray-300"}\`}
+            className={`border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-colors ${dragActive ? "border-red-500 bg-red-50" : "border-gray-200 hover:border-gray-300"}`}
           >
-            <input id="fileInput" type="file" accept=".pdf" onChange={handleFileChange} className="hidden" />
-            <Upload className="w-10 h-10 text-gray-400 mx-auto mb-4" />
+            <input id="fileInput" type="file" accept=".pdf" onChange={(e) => handleFile(e.target.files?.[0] ?? null)} className="hidden" />
+            <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <p className="font-medium text-black mb-1">Drop your PDF here</p>
             <p className="text-sm text-gray-500">or click to browse</p>
           </div>
         ) : resultUrls.length > 0 ? (
           <div className="space-y-4">
-            <div className="bg-green-50 rounded-2xl p-6">
-              <p className="font-medium text-black mb-4 text-center">PDF split into 2 files!</p>
-              <div className="space-y-3">
-                {resultUrls.map((url, i) => (
-                  <button key={i} onClick={() => download(url, i)} className="w-full py-3 bg-white border border-gray-200 rounded-xl text-gray-700 font-medium flex items-center justify-center gap-2 hover:bg-gray-50">
-                    <Download className="w-4 h-4" /> Download Part {i + 1}
-                  </button>
-                ))}
-              </div>
+            <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
+              <p className="font-bold text-green-700 mb-2">Split Complete!</p>
+              <p className="text-sm text-green-600">Your PDF has been split into 2 files</p>
             </div>
+            {resultUrls.map((url, i) => (
+              <button key={i} onClick={() => download(url, i)} className="w-full py-4 bg-black text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-gray-800">
+                <Download className="w-5 h-5" />
+                Download Part {i + 1}
+              </button>
+            ))}
             <button onClick={reset} className="w-full py-3 border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50">
               Split Another File
             </button>
@@ -156,29 +128,16 @@ export default function SplitPDF() {
                 </button>
               </div>
             </div>
-
             {totalPages > 0 && (
               <div className="bg-gray-50 rounded-2xl p-6">
                 <p className="font-medium text-black mb-4">Split after page:</p>
                 <div className="flex items-center gap-4">
-                  <input
-                    type="number"
-                    min={1}
-                    max={totalPages - 1}
-                    value={splitAt}
-                    onChange={(e) => setSplitAt(Math.max(1, Math.min(totalPages - 1, parseInt(e.target.value) || 1)))}
-                    className="w-24 px-4 py-2 border border-gray-200 rounded-xl text-center"
-                  />
+                  <input type="number" min={1} max={totalPages - 1} value={splitAt} onChange={(e) => setSplitAt(Math.max(1, Math.min(totalPages - 1, parseInt(e.target.value) || 1)))} className="w-24 px-4 py-2 border border-gray-200 rounded-xl text-center" />
                   <span className="text-gray-500">of {totalPages} pages</span>
                 </div>
               </div>
             )}
-
-            <button
-              onClick={processSplit}
-              disabled={isProcessing || totalPages < 2}
-              className="w-full py-4 bg-black text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-gray-800 disabled:opacity-50"
-            >
+            <button onClick={processSplit} disabled={isProcessing || totalPages < 2} className="w-full py-4 bg-black text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-gray-800 disabled:opacity-50">
               {isProcessing ? <><Loader2 className="w-5 h-5 animate-spin" /> Splitting...</> : <><Scissors className="w-5 h-5" /> Split PDF</>}
             </button>
           </div>
